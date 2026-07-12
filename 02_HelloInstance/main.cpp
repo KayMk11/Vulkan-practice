@@ -1,3 +1,4 @@
+#define VULKAN_HPP_NO_STRUCT_CONSTRUCTORS
 #include <vulkan/vulkan_raii.hpp>
 #include <GLFW/glfw3.h>
 
@@ -33,11 +34,11 @@ private:
     }
     void createInstance()
     {
-        constexpr vk::ApplicationInfo appInfo("Hello Triangle",              // pApplicationName    
-                                              VK_MAKE_VERSION( 1, 0, 0 ),    // applicationVersion            
-                                              "No Engine",                   // pEngineName
-                                              VK_MAKE_VERSION( 1, 0, 0 ),    // engineVersion                
-                                              vk::ApiVersion14);             // apiVersion    
+        constexpr vk::ApplicationInfo appInfo{ .pApplicationName   = "Hello Triangle",
+                    .applicationVersion = VK_MAKE_VERSION( 1, 0, 0 ),
+                    .pEngineName        = "No Engine",
+                    .engineVersion      = VK_MAKE_VERSION( 1, 0, 0 ),
+                    .apiVersion         = vk::ApiVersion14 }; 
 
         // Get the required instance extensions from GLFW.
         uint32_t glfwExtensionCount = 0;
@@ -54,12 +55,13 @@ private:
                 throw std::runtime_error("Required GLFW extension not supported: " + std::string(glfwExtensions[i]));
             }
         }
-        vk::InstanceCreateInfo createInfo(vk::InstanceCreateFlags(),        // flags
-                                          &appInfo,                         // pApplicationInfo
-                                          0,                                // enabledLayerCount
-                                          nullptr,                          // ppEnabledLayerNames
-                                          glfwExtensionCount,               // enabledExtensionCount        
-                                          glfwExtensions);                  // ppEnabledExtensionNames
+
+        vk::InstanceCreateInfo createInfo{
+            .pApplicationInfo        = &appInfo,
+            .enabledLayerCount       = static_cast<uint32_t>(requiredLayers.size()),
+            .ppEnabledLayerNames     = requiredLayers.data(),
+            .enabledExtensionCount   = static_cast<uint32_t>(requiredExtensions.size()),
+            .ppEnabledExtensionNames = requiredExtensions.data() };
 
         instance = vk::raii::Instance(context, createInfo);
     }

@@ -1,3 +1,4 @@
+#define VULKAN_HPP_NO_STRUCT_CONSTRUCTORS
 #include <vulkan/vulkan_raii.hpp>
 #include <GLFW/glfw3.h>
 
@@ -56,32 +57,29 @@ private:
                                                         vk::DebugUtilsMessageSeverityFlagBitsEXT::eError);
         vk::DebugUtilsMessageTypeFlagsEXT     messageTypeFlags(
                 vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation);
-        vk::DebugUtilsMessengerCreateInfoEXT debugUtilsMessengerCreateInfoEXT(
-                                                            vk::DebugUtilsMessengerCreateFlagsEXT(),    // flags
-                                                            severityFlags,                              // messageSeverity
-                                                            messageTypeFlags,                           // messageType
-                                                            &debugCallback,                             // pfnUserCallback
-                                                            nullptr);                                   // pUserData
+        vk::DebugUtilsMessengerCreateInfoEXT debugUtilsMessengerCreateInfoEXT{.messageSeverity = severityFlags,
+                                                                            .messageType     = messageTypeFlags,
+                                                                            .pfnUserCallback = &debugCallback};
         debugMessenger = instance.createDebugUtilsMessengerEXT( debugUtilsMessengerCreateInfoEXT );
 
     }
     void createInstance()
     {
-        constexpr vk::ApplicationInfo appInfo("Hello Triangle",              // pApplicationName    
-                                              VK_MAKE_VERSION( 1, 0, 0 ),    // applicationVersion            
-                                              "No Engine",                   // pEngineName
-                                              VK_MAKE_VERSION( 1, 0, 0 ),    // engineVersion                
-                                              vk::ApiVersion14);             // apiVersion    
-
+        constexpr vk::ApplicationInfo appInfo{ .pApplicationName   = "Hello Triangle",
+                    .applicationVersion = VK_MAKE_VERSION( 1, 0, 0 ),
+                    .pEngineName        = "No Engine",
+                    .engineVersion      = VK_MAKE_VERSION( 1, 0, 0 ),
+                    .apiVersion         = vk::ApiVersion14 }; 
+    
         std::vector<const char*> requiredLayers = getRequiredInstanceLayers();
         std::vector<const char*> requiredExtensions = getRequiredInstanceExtensions();
 
-        vk::InstanceCreateInfo createInfo(vk::InstanceCreateFlags(),                        // flags
-                                          &appInfo,                                         // pApplicationInfo
-                                          static_cast<uint32_t>(requiredLayers.size()),     // enabledLayerCount
-                                          requiredLayers.data(),                            // ppEnabledLayerNames
-                                          static_cast<uint32_t>(requiredExtensions.size()), // enabledExtensionCount        
-                                          requiredExtensions.data());                       // ppEnabledExtensionNames
+        vk::InstanceCreateInfo createInfo{
+            .pApplicationInfo        = &appInfo,
+            .enabledLayerCount       = static_cast<uint32_t>(requiredLayers.size()),
+            .ppEnabledLayerNames     = requiredLayers.data(),
+            .enabledExtensionCount   = static_cast<uint32_t>(requiredExtensions.size()),
+            .ppEnabledExtensionNames = requiredExtensions.data() };
 
         instance = vk::raii::Instance(context, createInfo);
     }
