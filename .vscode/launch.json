@@ -21,7 +21,7 @@
                 },
                 {
                     "description": "Disable debuginfod download inside this session",
-                    "text": "set debuginfod enabled off",
+                    "text": "set debuginfod enable off",
                     "ignoreFailures": true
                 },
                 // {

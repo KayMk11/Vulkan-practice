@@ -1,0 +1,6 @@
+BasedOnStyle: LLVM
+IndentWidth: 4
+ColumnLimit: 180
+BreakBeforeBraces: Attach
+AllowShortBlocksOnASingleLine: Empty
+AlignConsecutiveAssignments: None

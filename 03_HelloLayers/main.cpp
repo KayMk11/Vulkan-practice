@@ -65,12 +65,12 @@ private:
     }
     void createInstance()
     {
-        constexpr vk::ApplicationInfo appInfo{ .pApplicationName   = "Hello Triangle",
+        constexpr vk::ApplicationInfo appInfo{ 
+                    .pApplicationName   = "Hello Triangle",
                     .applicationVersion = VK_MAKE_VERSION( 1, 0, 0 ),
                     .pEngineName        = "No Engine",
                     .engineVersion      = VK_MAKE_VERSION( 1, 0, 0 ),
                     .apiVersion         = vk::ApiVersion14 }; 
-    
         std::vector<const char*> requiredLayers = getRequiredInstanceLayers();
         std::vector<const char*> requiredExtensions = getRequiredInstanceExtensions();
 

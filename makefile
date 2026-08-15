@@ -4,20 +4,33 @@ DIR ?= .
 CFLAGS = -std=c++20 -Wall -fdiagnostics-color=always -g
 LDFLAGS = -lglfw -lvulkan -ldl -lpthread
 
-# The target binary will be placed inside the specified folder
+SLANGC = slangc
+SLANGFLAGS = -target spirv
+
+# File paths
 TARGET = $(DIR)/main
 SRC = $(DIR)/main.cpp
 
+# Automatically detect any .slang files in the specified DIR
+SLANG_SRCS := $(wildcard $(DIR)/*.slang)
+SPV_OBJS   := $(SLANG_SRCS:.slang=.spv)
+
+# Default rule builds compiled shaders (if any exist) and the executable
+all: $(SPV_OBJS) $(TARGET)
+
+# Compile C++ executable
 $(TARGET): $(SRC)
 	g++ $(CFLAGS) -o $(TARGET) $(SRC) $(LDFLAGS)
 
-.PHONY: run clean
+# Generic rule to compile any .slang file to .spv in the target DIR
+%.spv: %.slang
+	$(SLANGC) $< $(SLANGFLAGS) -o $@
 
-run: $(TARGET)
+.PHONY: all run clean
+
+run: all
 	# Force Wayland native execution
-	GLFW_PLATFORM=wayland ./$(TARGET)
+	cd $(DIR) && GLFW_PLATFORM=wayland ./$(notdir $(TARGET))
 
 clean:
-	rm -f $(TARGET)
-
-
+	rm -f $(TARGET) $(DIR)/*.spv
