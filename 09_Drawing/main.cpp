@@ -10,6 +10,9 @@
 
 constexpr uint32_t WIDTH = 800;
 constexpr uint32_t HEIGHT = 600;
+constexpr int MAX_FRAMES_IN_FLIGHT = 2;
+
+uint32_t frameIndex = 0;
 
 #ifdef NDEBUG
 constexpr bool enableValidationLayers = false;
@@ -45,8 +48,16 @@ private:
     {
         glfwInit();
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-        glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+        glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
         window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
+        glfwSetWindowUserPointer(window, this);
+        glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
+    }
+
+    static void framebufferResizeCallback(GLFWwindow* window, int width, int height)
+    {
+        auto app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
+        app->framebufferResized = true;
     }
     void initVulkan() 
     {
@@ -59,7 +70,7 @@ private:
         createImageViews();
         createGraphicsPipeline();
         createCommandPool();
-        createCommandBuffer();
+        createCommandBuffers();
         createSyncObjects();
     }
 
@@ -230,7 +241,10 @@ private:
                            vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT> featureChain = {
             {},                                    // vk::PhysicalDeviceFeatures2 (empty for now)
             {.shaderDrawParameters = true},        // Enable shader draw parameters from Vulkan 1.1
-            {.dynamicRendering = true},            // Enable dynamic rendering from Vulkan 1.3
+            {
+                .synchronization2 = true,
+                .dynamicRendering = true           // Enable dynamic rendering from Vulkan 1.3
+            },
             {.extendedDynamicState = true}         // Enable extended dynamic state from the extension
         };          
         vk::DeviceCreateInfo deviceCreateInfo{
@@ -446,14 +460,15 @@ private:
         commandPool = vk::raii::CommandPool(device, poolInfo);
     }
 
-    void createCommandBuffer()
+    void createCommandBuffers()
     {
-        vk::CommandBufferAllocateInfo allocInfo{ .commandPool = commandPool, .level = vk::CommandBufferLevel::ePrimary, .commandBufferCount = 1 };
-        commandBuffer = std::move(vk::raii::CommandBuffers(device, allocInfo).front());
+		vk::CommandBufferAllocateInfo allocInfo{.commandPool = commandPool, .level = vk::CommandBufferLevel::ePrimary, .commandBufferCount = MAX_FRAMES_IN_FLIGHT};
+        commandBuffers = vk::raii::CommandBuffers( device, allocInfo );
     }
 
     void recordCommandBuffer(uint32_t imageIndex)
     {
+        auto &commandBuffer = commandBuffers[frameIndex];
         commandBuffer.begin({});
         // Before starting rendering, transition the swapchain image to vk::ImageLayout::eColorAttachmentOptimal
         transition_image_layout(
@@ -531,49 +546,109 @@ private:
             .imageMemoryBarrierCount = 1,
             .pImageMemoryBarriers    = &barrier
         };
-        commandBuffer.pipelineBarrier2(dependency_info);
+        commandBuffers[frameIndex].pipelineBarrier2(dependency_info);
     }
 
     void drawFrame()
     {
-        auto fenceResult = device.waitForFences(*drawFence, vk::True, UINT64_MAX);
-        if (fenceResult != vk::Result::eSuccess)
-        {
-            throw std::runtime_error("failed to wait for fence!");
-        }
-        device.resetFences(*drawFence);
-        auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompleteSemaphore, nullptr);
-        recordCommandBuffer(imageIndex);
-        vk::PipelineStageFlags waitDestinationStageMask( vk::PipelineStageFlagBits::eColorAttachmentOutput );
-        const vk::SubmitInfo   submitInfo{.waitSemaphoreCount   = 1,
-                                        .pWaitSemaphores      = &*presentCompleteSemaphore,
-                                        .pWaitDstStageMask    = &waitDestinationStageMask,
-                                        .commandBufferCount   = 1,
-                                        .pCommandBuffers      = &*commandBuffer,
-                                        .signalSemaphoreCount = 1,
-                                        .pSignalSemaphores    = &*renderFinishedSemaphore
-                                    };
-        queue.submit(submitInfo, *drawFence);
+		auto fenceResult = device.waitForFences(*inFlightFences[frameIndex], vk::True, UINT64_MAX);
+		if (fenceResult != vk::Result::eSuccess)
+		{
+			throw std::runtime_error("failed to wait for fence!");
+		}
 
-        const vk::PresentInfoKHR presentInfoKHR{
+
+		auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompleteSemaphores[frameIndex], nullptr);
+
+        if (result == vk::Result::eErrorOutOfDateKHR)
+        {
+            recreateSwapChain();
+            return;
+        }
+
+        if (result != vk::Result::eSuccess && result != vk::Result::eSuboptimalKHR)
+        {
+            assert(result == vk::Result::eTimeout || result == vk::Result::eNotReady);
+            throw std::runtime_error("failed to acquire swap chain image!");
+        }
+
+        device.resetFences(*inFlightFences[frameIndex]);
+
+		commandBuffers[frameIndex].reset();
+		recordCommandBuffer(imageIndex);
+
+		vk::PipelineStageFlags waitDestinationStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput);
+		const vk::SubmitInfo   submitInfo{.waitSemaphoreCount   = 1,
+		                                  .pWaitSemaphores      = &*presentCompleteSemaphores[frameIndex],
+		                                  .pWaitDstStageMask    = &waitDestinationStageMask,
+		                                  .commandBufferCount   = 1,
+		                                  .pCommandBuffers      = &*commandBuffers[frameIndex],
+		                                  .signalSemaphoreCount = 1,
+		                                  .pSignalSemaphores    = &*renderFinishedSemaphores[imageIndex]};
+		queue.submit(submitInfo, *inFlightFences[frameIndex]);
+
+        vk::PresentInfoKHR presentInfo{
             .waitSemaphoreCount = 1,
-            .pWaitSemaphores    = &*renderFinishedSemaphore,
+            .pWaitSemaphores    = &*renderFinishedSemaphores[imageIndex],
             .swapchainCount     = 1,
             .pSwapchains        = &*swapChain,
             .pImageIndices      = &imageIndex
         };
-        result = queue.presentKHR(presentInfoKHR);
+        result = queue.presentKHR(presentInfo);
+        if ((result == vk::Result::eSuboptimalKHR) || (result == vk::Result::eErrorOutOfDateKHR) || framebufferResized)
+        {
+            framebufferResized = false;
+            recreateSwapChain();
+        }
+        else
+        {
+            // There are no other success codes than eSuccess; on any error code, presentKHR already threw an exception.
+            assert(result == vk::Result::eSuccess);
+        }
+
+        frameIndex = (frameIndex + 1) % MAX_FRAMES_IN_FLIGHT;
     }
 
     void createSyncObjects()
     {
-        presentCompleteSemaphore = vk::raii::Semaphore(device, vk::SemaphoreCreateInfo());
-        renderFinishedSemaphore  = vk::raii::Semaphore(device, vk::SemaphoreCreateInfo());
-        drawFence                = vk::raii::Fence(device, {.flags = vk::FenceCreateFlagBits::eSignaled});
+		assert(presentCompleteSemaphores.empty() && renderFinishedSemaphores.empty() && inFlightFences.empty());
+
+		for (size_t i = 0; i < swapChainImages.size(); i++)
+		{
+			renderFinishedSemaphores.emplace_back(device, vk::SemaphoreCreateInfo());
+		}
+
+		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+		{
+			presentCompleteSemaphores.emplace_back(device, vk::SemaphoreCreateInfo());
+			inFlightFences.emplace_back(device, vk::FenceCreateInfo{.flags = vk::FenceCreateFlagBits::eSignaled});
+		}
+    }
+
+    void cleanupSwapChain()
+    {
+        swapChainImageViews.clear();
+        swapChain = nullptr;
+    }
+
+    void recreateSwapChain()
+    {
+        device.waitIdle();
+
+        cleanupSwapChain();
+
+        createSwapChain();
+        createImageViews();
     }
 
     void mainLoop() 
     {
+        int width = 0, height = 0;
+        glfwGetFramebufferSize(window, &width, &height);
+        while (width == 0 || height == 0) {
+            glfwGetFramebufferSize(window, &width, &height);
+            glfwWaitEvents();
+        }
         while (!glfwWindowShouldClose(window)) 
         {
             glfwPollEvents();
@@ -584,6 +659,24 @@ private:
 
     void cleanup() 
     {
+
+        // Manual cleanup, autocleanup is a myth
+        device.waitIdle();
+
+        inFlightFences.clear();
+        renderFinishedSemaphores.clear();
+        presentCompleteSemaphores.clear();
+        commandBuffers.clear();
+        commandPool = nullptr;
+        graphicsPipeline = nullptr;
+        pipelineLayout = nullptr;
+        swapChainImageViews.clear();
+        swapChain = nullptr;
+        surface = nullptr;      // <-- must happen while the window still exists
+        device = nullptr;
+        debugMessenger = nullptr;
+        instance = nullptr;
+
         glfwDestroyWindow(window);
         glfwTerminate();
     }
@@ -607,10 +700,11 @@ private:
     vk::raii::PipelineLayout            pipelineLayout = nullptr;
     vk::raii::Pipeline graphicsPipeline = nullptr;
     vk::raii::CommandPool commandPool = nullptr;
-    vk::raii::CommandBuffer commandBuffer = nullptr;
-    vk::raii::Semaphore presentCompleteSemaphore = nullptr;
-    vk::raii::Semaphore renderFinishedSemaphore  = nullptr;
-    vk::raii::Fence     drawFence                = nullptr;
+    std::vector<vk::raii::CommandBuffer> commandBuffers;
+    std::vector<vk::raii::Semaphore> presentCompleteSemaphores;
+    std::vector<vk::raii::Semaphore> renderFinishedSemaphores;
+    std::vector<vk::raii::Fence> inFlightFences;
+    bool framebufferResized = false;
 };
 
 int main()
