@@ -4,27 +4,31 @@ DIR ?= .
 CFLAGS = -std=c++20 -Wall -fdiagnostics-color=always -g
 LDFLAGS = -lglfw -lvulkan -ldl -lpthread
 
-SLANGC = slangc
-SLANGFLAGS = -target spirv
+GLSLC = glslc
 
 # File paths
 TARGET = $(DIR)/main
 SRC = $(DIR)/main.cpp
 
-# Automatically detect any .slang files in the specified DIR
-SLANG_SRCS := $(wildcard $(DIR)/*.slang)
-SPV_OBJS   := $(SLANG_SRCS:.slang=.spv)
+# Shaders live in DIR/shaders/, compiled SPIR-V goes alongside them
+SHADER_DIR = $(DIR)/shaders
+VERT_SRCS := $(wildcard $(SHADER_DIR)/*.vert)
+FRAG_SRCS := $(wildcard $(SHADER_DIR)/*.frag)
+SPV_OBJS  := $(VERT_SRCS:.vert=.vert.spv) $(FRAG_SRCS:.frag=.frag.spv)
 
-# Default rule builds compiled shaders (if any exist) and the executable
+# Default rule builds compiled shaders and the executable
 all: $(SPV_OBJS) $(TARGET)
 
 # Compile C++ executable
 $(TARGET): $(SRC)
 	g++ $(CFLAGS) -o $(TARGET) $(SRC) $(LDFLAGS)
 
-# Generic rule to compile any .slang file to .spv in the target DIR
-%.spv: %.slang
-	$(SLANGC) $< $(SLANGFLAGS) -o $@
+# Compile vertex/fragment shaders to SPIR-V
+$(SHADER_DIR)/%.vert.spv: $(SHADER_DIR)/%.vert
+	$(GLSLC) $< -o $@
+
+$(SHADER_DIR)/%.frag.spv: $(SHADER_DIR)/%.frag
+	$(GLSLC) $< -o $@
 
 .PHONY: all run clean
 
@@ -33,4 +37,4 @@ run: all
 	cd $(DIR) && GLFW_PLATFORM=wayland ./$(notdir $(TARGET))
 
 clean:
-	rm -f $(TARGET) $(DIR)/*.spv
+	rm -f $(TARGET) $(SHADER_DIR)/*.spv
