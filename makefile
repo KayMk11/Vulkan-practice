@@ -1,7 +1,7 @@
 # Default to current directory if no DIR is specified
 DIR ?= .
 
-CFLAGS = -std=c++20 -Wall -fdiagnostics-color=always -g
+CFLAGS = -std=c++20 -Wall -fdiagnostics-color=always -g -I ./third_party/
 LDFLAGS = -lglfw -lvulkan -ldl -lpthread
 
 GLSLC = glslc
